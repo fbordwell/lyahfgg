@@ -1,5 +1,8 @@
 module MyLib where
 
+import Data.Char
+import Data.List
+
 replicate' :: Int -> a -> [a]
 replicate' n x
   | n <= 0 = []
@@ -62,3 +65,16 @@ filter' f = foldr (\x acc -> if f x then x : acc else acc) []
 
 last' :: [a] -> a
 last' = foldl1 (\_ x -> x)
+
+encode :: Int -> String -> String
+encode offset = map $ chr . (+ offset) . ord
+
+decode :: Int -> String -> String
+decode offset = encode $ negate offset
+
+digitSum :: Int -> Int
+digitSum = sum . (map digitToInt) . show
+
+firstTo :: Int -> Maybe Int
+firstTo n = find (\x -> digitSum x == n) [1..]
+
