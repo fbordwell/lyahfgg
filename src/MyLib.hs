@@ -1,7 +1,13 @@
+{-# LANGUAGE InstanceSigs #-}
+{-# OPTIONS_GHC -Wno-unrecognised-pragmas #-}
+
 module MyLib where
 
+import Control.Monad (guard)
 import Data.Char
+import qualified Data.Foldable as F
 import Data.List
+import Prelude hiding (sequenceA)
 
 replicate' :: Int -> a -> [a]
 replicate' n x
@@ -73,8 +79,65 @@ decode :: Int -> String -> String
 decode offset = encode $ negate offset
 
 digitSum :: Int -> Int
-digitSum = sum . (map digitToInt) . show
+digitSum = sum . map digitToInt . show
 
 firstTo :: Int -> Maybe Int
-firstTo n = find (\x -> digitSum x == n) [1..]
+firstTo n = find (\x -> digitSum x == n) [1 ..]
 
+inputRPN :: String
+inputRPN = "10 4 3 + 2 * -"
+
+solveRPN :: String -> Double
+solveRPN = head . foldl f [] . words
+  where
+    f (x : y : ys) "*" = (y * x) : ys
+    f (x : y : ys) "+" = (y + x) : ys
+    f (x : y : ys) "-" = (y - x) : ys
+    f xs numberString = read numberString : xs
+
+sequenceA :: (Applicative f) => [f a] -> f [a]
+sequenceA [] = pure []
+sequenceA (x : xs) = (:) <$> x <*> sequenceA xs
+
+newtype Product a = Product {getProduct :: a}
+  deriving (Eq, Ord, Read, Show, Bounded)
+
+instance (Num a) => Monoid (Product a) where
+  mempty = Product 1
+  Product x `mappend` Product y = Product (x * y)
+  mconcat = foldr mappend mempty
+
+data Tree a
+  = EmptyTree
+  | Node a (Tree a) (Tree a)
+  deriving (Show)
+
+instance F.Foldable Tree where
+  foldMap _ EmptyTree = mempty
+  foldMap f (Node x l r) = F.foldMap f l <> f x <> F.foldMap f r
+
+type KnightPos = (Int, Int)
+
+moveKnight :: KnightPos -> [KnightPos]
+moveKnight (c, r) = do
+  (c', r') <-
+    [ (c + 2, r - 1),
+      (c + 2, r + 1),
+      (c - 2, r - 1),
+      (c - 2, r + 1),
+      (c + 1, r - 2),
+      (c + 1, r + 2),
+      (c - 1, r - 2),
+      (c - 1, r + 2)
+      ]
+  guard (c' `elem` [1 .. 8] && r' `elem` [1 .. 8])
+  return (c', r')
+
+in3 :: KnightPos -> [KnightPos]
+in3 start = do
+  first <- moveKnight start
+  second <- moveKnight first
+  moveKnight second
+
+canReachIn3 :: KnightPos -> KnightPos -> Bool
+canReachIn3 start end = end `elem` in3 start

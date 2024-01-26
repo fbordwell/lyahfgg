@@ -32,6 +32,7 @@
           hspkgs.ghcid
           hspkgs.ormolu
           hspkgs.hlint
+          hspkgs.haskell-language-server
         ];
       };
       defaultPackage = pkgs.lyahfgg;
