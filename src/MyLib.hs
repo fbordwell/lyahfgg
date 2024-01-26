@@ -1,9 +1,7 @@
-{-# LANGUAGE InstanceSigs #-}
-{-# OPTIONS_GHC -Wno-unrecognised-pragmas #-}
-
 module MyLib where
 
-import Control.Monad (guard)
+import Control.Monad.Instances
+import Control.Monad.Writer
 import Data.Char
 import qualified Data.Foldable as F
 import Data.List
@@ -99,14 +97,6 @@ sequenceA :: (Applicative f) => [f a] -> f [a]
 sequenceA [] = pure []
 sequenceA (x : xs) = (:) <$> x <*> sequenceA xs
 
-newtype Product a = Product {getProduct :: a}
-  deriving (Eq, Ord, Read, Show, Bounded)
-
-instance (Num a) => Monoid (Product a) where
-  mempty = Product 1
-  Product x `mappend` Product y = Product (x * y)
-  mconcat = foldr mappend mempty
-
 data Tree a
   = EmptyTree
   | Node a (Tree a) (Tree a)
@@ -141,3 +131,33 @@ in3 start = do
 
 canReachIn3 :: KnightPos -> KnightPos -> Bool
 canReachIn3 start end = end `elem` in3 start
+
+newtype DiffList a = DiffList {getDiffList :: [a] -> [a]}
+
+toDiffList :: [a] -> DiffList a
+toDiffList xs = DiffList (xs ++)
+
+fromDiffList :: DiffList a -> [a]
+fromDiffList (DiffList f) = f []
+
+instance Semigroup (DiffList a) where
+  DiffList f <> DiffList g = DiffList (\xs -> f (g xs))
+
+instance Monoid (DiffList a) where
+  mempty = DiffList (\xs -> [] ++ xs)
+
+gcd' :: Int -> Int -> Writer (DiffList String) Int
+gcd' a b
+  | b == 0 = do
+      tell (toDiffList ["Finished with " ++ show a])
+      return a
+  | otherwise = do
+      result <- gcd' b (a `mod` b)
+      tell (toDiffList [show a ++ " mod " ++ show b ++ " = " ++ show (a `mod` b)])
+      return result
+
+addStuff :: Int -> Int
+addStuff = do
+  a <- (* 2)
+  b <- (+ 10)
+  return (a + b)
