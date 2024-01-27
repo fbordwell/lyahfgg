@@ -5,6 +5,7 @@ import Control.Monad.Writer
 import Data.Char
 import qualified Data.Foldable as F
 import Data.List
+import Data.Ratio
 import Prelude hiding (sequenceA)
 
 replicate' :: Int -> a -> [a]
@@ -97,14 +98,14 @@ sequenceA :: (Applicative f) => [f a] -> f [a]
 sequenceA [] = pure []
 sequenceA (x : xs) = (:) <$> x <*> sequenceA xs
 
-data Tree a
+data Tree' a
   = EmptyTree
-  | Node a (Tree a) (Tree a)
+  | Node' a (Tree' a) (Tree' a)
   deriving (Show)
 
-instance F.Foldable Tree where
+instance F.Foldable Tree' where
   foldMap _ EmptyTree = mempty
-  foldMap f (Node x l r) = F.foldMap f l <> f x <> F.foldMap f r
+  foldMap f (Node' x l r) = F.foldMap f l <> f x <> F.foldMap f r
 
 type KnightPos = (Int, Int)
 
@@ -185,12 +186,187 @@ readMaybe st = case reads st of
   _ -> Nothing
 
 foldingFunction :: [Double] -> String -> Maybe [Double]
-foldingFunction (x : y : ys) "*" = return ((y * x) : ys) -- Multiplies the top two numbers.
-foldingFunction (x : y : ys) "+" = return ((y + x) : ys) -- Adds the top two numbers.
-foldingFunction (x : y : ys) "-" = return ((y - x) : ys) -- Subtracts the top two numbers.
+foldingFunction (x : y : ys) "*" = return ((y * x) : ys)
+foldingFunction (x : y : ys) "+" = return ((y + x) : ys)
+foldingFunction (x : y : ys) "-" = return ((y - x) : ys)
 foldingFunction xs numberString = liftM (: xs) (readMaybe numberString)
 
-solveRPN :: String -> Maybe Double
-solveRPN st = do
+solveRPN' :: String -> Maybe Double
+solveRPN' st = do
   [result] <- foldM foldingFunction [] (words st)
   return result
+
+inMany :: Int -> KnightPos -> [KnightPos]
+inMany x start = return start >>= foldr (<=<) return (replicate x moveKnight)
+
+canReachIn :: Int -> KnightPos -> KnightPos -> Bool
+canReachIn x start end = end `elem` inMany x start
+
+newtype Prob a = Prob {getProb :: [(a, Rational)]} deriving (Show)
+
+instance Functor Prob where
+  fmap f (Prob xs) = Prob $ map (\(x, p) -> (f x, p)) xs
+
+flatten :: Prob (Prob a) -> Prob a
+flatten (Prob xs) = Prob $ concat $ map multAll xs
+  where
+    multAll (Prob innerxs, p) = map (\(x, r) -> (x, p * r)) innerxs
+
+instance Applicative Prob where
+  m <*> n = Prob $ do
+    (f, p) <- getProb m
+    (x, q) <- getProb n
+    return (f x, p * q)
+  pure x = Prob [(x, 1 % 1)]
+
+instance Monad Prob where
+  return = pure
+  m >>= f = flatten (fmap f m)
+
+data Coin = Heads | Tails deriving (Show, Eq)
+
+coin :: Prob Coin
+coin = Prob [(Heads, 1 % 2), (Tails, 1 % 2)]
+
+loadedCoin :: Prob Coin
+loadedCoin = Prob [(Heads, 1 % 10), (Tails, 9 % 10)]
+
+flipThree :: Prob Bool
+flipThree = do
+  a <- coin
+  b <- coin
+  c <- loadedCoin
+  return (all (== Tails) [a, b, c])
+
+data Tree a = Empty | Node a (Tree a) (Tree a) deriving (Show)
+
+freeTree :: Tree Char
+freeTree =
+  Node
+    'P'
+    ( Node
+        'O'
+        ( Node
+            'L'
+            (Node 'N' Empty Empty)
+            (Node 'T' Empty Empty)
+        )
+        ( Node
+            'Y'
+            (Node 'S' Empty Empty)
+            (Node 'A' Empty Empty)
+        )
+    )
+    ( Node
+        'L'
+        ( Node
+            'W'
+            (Node 'C' Empty Empty)
+            (Node 'R' Empty Empty)
+        )
+        ( Node
+            'A'
+            (Node 'A' Empty Empty)
+            (Node 'C' Empty Empty)
+        )
+    )
+
+data Direction = L | R deriving (Show)
+
+type Directions = [Direction]
+
+changeToP :: Directions -> Tree Char -> Tree Char
+changeToP (L : ds) (Node x l r) = Node x (changeToP ds l) r
+changeToP (R : ds) (Node x l r) = Node x l (changeToP ds r)
+changeToP [] (Node _ l r) = Node 'P' l r
+
+elemAt :: Directions -> Tree a -> a
+elemAt (L : ds) (Node _ l _) = elemAt ds l
+elemAt (R : ds) (Node _ _ r) = elemAt ds r
+elemAt [] (Node x _ _) = x
+
+(-:) :: a -> (a -> b) -> b
+x -: f = f x
+
+data Crumb a = LeftCrumb a (Tree a) | RightCrumb a (Tree a) deriving (Show)
+
+type Breadcrumbs a = [Crumb a]
+
+goLeft :: (Tree a, Breadcrumbs a) -> (Tree a, Breadcrumbs a)
+goLeft (Node x l r, bs) = (l, LeftCrumb x r : bs)
+
+goRight :: (Tree a, Breadcrumbs a) -> (Tree a, Breadcrumbs a)
+goRight (Node x l r, bs) = (r, RightCrumb x l : bs)
+
+goUp :: (Tree a, Breadcrumbs a) -> (Tree a, Breadcrumbs a)
+goUp (t, LeftCrumb x r : bs) = (Node x t r, bs)
+goUp (t, RightCrumb x l : bs) = (Node x l t, bs)
+
+type Zipper a = (Tree a, Breadcrumbs a)
+
+modify :: (a -> a) -> Zipper a -> Zipper a
+modify f (Node x l r, bs) = (Node (f x) l r, bs)
+modify _ (Empty, bs) = (Empty, bs)
+
+attach :: Tree a -> Zipper a -> Zipper a
+attach t (_, bs) = (t, bs)
+
+topMost :: Zipper a -> Zipper a
+topMost (t, []) = (t, [])
+topMost z = topMost (goUp z)
+
+data List a = Empty' | Cons a (List a) deriving (Show, Read, Eq, Ord)
+
+type Name = String
+
+type Data = String
+
+data FSItem = File Name Data | Folder Name [FSItem] deriving (Show)
+
+myDisk :: FSItem
+myDisk =
+  Folder
+    "root"
+    [ File "goat_yelling_like_man.wmv" "baaaaaa",
+      File "pope_time.avi" "god bless",
+      Folder
+        "pics"
+        [ File "ape_throwing_up.jpg" "bleargh",
+          File "watermelon_smash.gif" "smash!!",
+          File "skull_man(scary).bmp" "Yikes!"
+        ],
+      File "dijon_poupon.doc" "best mustard",
+      Folder
+        "programs"
+        [ File "fartwizard.exe" "10gotofart",
+          File "owl_bandit.dmg" "mov eax, h00t",
+          File "not_a_virus.exe" "really not a virus",
+          Folder
+            "source code"
+            [ File "best_hs_prog.hs" "main = print (fix error)",
+              File "random.hs" "main = print 4"
+            ]
+        ]
+    ]
+
+data FSCrumb = FSCrumb Name [FSItem] [FSItem] deriving (Show)
+type FSZipper = (FSItem, [FSCrumb])
+
+fsUp :: FSZipper -> FSZipper
+fsUp (item, FSCrumb name ls rs:bs) = (Folder name (ls ++ [item] ++ rs), bs)
+
+fsTo :: Name -> FSZipper -> FSZipper
+fsTo name (Folder folderName items, bs) =
+    let (ls, item:rs) = break (nameIs name) items
+    in  (item, FSCrumb folderName ls rs:bs)
+
+nameIs :: Name -> FSItem -> Bool
+nameIs name (Folder folderName _) = name == folderName
+nameIs name (File fileName _) = name == fileName
+
+fsRename :: Name -> FSZipper -> FSZipper
+fsRename newName (Folder name items, bs) = (Folder newName items, bs)
+fsRename newName (File name dat, bs) = (File newName dat, bs)
+
+fsNewFile :: FSItem -> FSZipper -> FSZipper
+fsNewFile item (Folder folderName items, bs) = (Folder folderName (item:items), bs)
