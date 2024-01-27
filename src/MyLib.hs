@@ -1,7 +1,7 @@
 module MyLib where
 
+import Control.Monad.Reader
 import Control.Monad.Writer
-import Control.Monad.State
 import Data.Char
 import qualified Data.Foldable as F
 import Data.List
@@ -162,23 +162,35 @@ addStuff = do
   b <- (+ 10)
   return (a + b)
 
-type Stack = [Int]
+keepSmall :: Int -> Writer [String] Bool
+keepSmall x
+  | x < 4 = do
+      tell ["Keeping " ++ show x]
+      return True
+  | otherwise = do
+      tell [show x ++ " is too large, throwing it away"]
+      return False
 
-pop :: Stack -> (Int, Stack)
-pop (x : xs) = (x, xs)
+powerset :: [a] -> [[a]]
+powerset = filterM (\_ -> [True, False])
 
-push :: Int -> Stack -> ((), Stack)
-push a xs = ((), a : xs)
+binSmalls :: Int -> Int -> Maybe Int
+binSmalls acc x
+  | x > 9 = Nothing
+  | otherwise = Just (acc + x)
 
-stackManip :: Stack -> (Int, Stack)
-stackManip stack =
-  let
-    ((), newStack1) = push 3 stack
-    (_ , newStack2) = pop newStack1
-   in pop newStack2
+readMaybe :: (Read a) => String -> Maybe a
+readMaybe st = case reads st of
+  [(x, "")] -> Just x
+  _ -> Nothing
 
-pop' :: State Stack Int
-pop' = state $ \(x:xs) -> (x, xs)
+foldingFunction :: [Double] -> String -> Maybe [Double]
+foldingFunction (x : y : ys) "*" = return ((y * x) : ys) -- Multiplies the top two numbers.
+foldingFunction (x : y : ys) "+" = return ((y + x) : ys) -- Adds the top two numbers.
+foldingFunction (x : y : ys) "-" = return ((y - x) : ys) -- Subtracts the top two numbers.
+foldingFunction xs numberString = liftM (: xs) (readMaybe numberString)
 
-push' :: Int -> State Stack ()
-push' a = state $ \xs -> ((), a:xs)
+solveRPN :: String -> Maybe Double
+solveRPN st = do
+  [result] <- foldM foldingFunction [] (words st)
+  return result
